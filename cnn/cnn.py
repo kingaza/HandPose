@@ -5,6 +5,12 @@ from keras.layers import Dense, Dropout, Flatten, Activation
 from keras.layers import Conv2D, MaxPooling2D
 from keras import backend as K
 from keras.layers.normalization import BatchNormalization
+
+# only useful for working with matplotlib on OSX, 
+# which is not a framework build of Python
+import matplotlib
+matplotlib.use('TkAgg')
+
 import matplotlib.pyplot as plt
 import numpy as np
 
