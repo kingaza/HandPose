@@ -16,6 +16,24 @@ import gui
 import numpy as np
 import requests
 
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(level = logging.INFO)
+handler = logging.FileHandler("ptab.log")
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
+handler.setFormatter(formatter)
+
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+
+logger.addHandler(handler)
+logger.addHandler(console)
+
+logger.info('=' * 80)
+logger.info("Start DEMO of Controlling Patient Table")
+logger.info('=' * 80)
+
 frame_processed = 0
 score_thresh = 0.18
 
@@ -24,15 +42,15 @@ score_thresh = 0.18
 
 
 def worker(input_q, output_q, cropped_output_q, inferences_q, cap_params, frame_processed):
-    print(">> loading frozen model for worker")
+    logger.info(">> loading frozen model for worker")
     detection_graph, sess = detector_utils.load_inference_graph()
     sess = tf.Session(graph=detection_graph)
 
-    print(">> loading keras model for worker")
+    logger.info(">> loading keras model for worker")
     try:
         model, classification_graph, session = classifier.load_KerasGraph("cnn/models/hand_poses_wGarbage_10.h5")
     except Exception as e:
-        print(e)
+        logger.error(e)
 
     while True:
         #print("> ===== in worker loop, frame ", frame_processed)
@@ -138,13 +156,14 @@ if __name__ == '__main__':
     cap_params = {}
     frame_processed = 0
     cap_params['im_width'], cap_params['im_height'] = video_capture.size()
-    print(cap_params['im_width'], cap_params['im_height'])
     cap_params['score_thresh'] = score_thresh
+
+    logger.info(cap_params['im_width'], cap_params['im_height'])
 
     # max number of hands we want to detect/track
     cap_params['num_hands_detect'] = args.num_hands
 
-    print(cap_params, args)
+    logger.info(cap_params, args)
     
     # Count number of files to increment new example directory
     poses = []
@@ -155,6 +174,8 @@ if __name__ == '__main__':
         if(line != ""):
             print(line)
             poses.append(line)
+
+    logger.info(poses)        
 
 
     # spin up workers to paralleize detection.
@@ -173,8 +194,6 @@ if __name__ == '__main__':
     time_buf = []
 
     ptab_moving = False
-    msg_move_sent = False
-    msg_stop_sent = False
 
     while True:
         frame = video_capture.read()
@@ -199,12 +218,11 @@ if __name__ == '__main__':
         fps = num_frames / elapsed_time
 
         if inferences is None:
-            print(time.time(), 'no found')
+            logger.debug('No hand detected')
 
         # Display inferences
         if(inferences is not None):
-            print('-'*80)
-            print(inferences)
+            logger.debug(inferences)
 
             t = time.time()
             p = np.argmax(inferences)
@@ -222,20 +240,22 @@ if __name__ == '__main__':
                 from collections import Counter
                 c = Counter(pose_buf)
                 most_common_pose, detect_times = c.most_common(1)[0]
-                print('pose', most_common_pose, 'happen', detect_times, 'in', len(pose_buf))  
+                logger.info(f'Pose {poses[most_common_pose]} happens {detect_times} / {len(pose_buf)}')  
                 
                 # pose Four
-                if most_common_pose == 0:
+                if most_common_pose == 0 or most_common_pose == 5:
                     if ptab_moving:
-                        resp = requests.get('http://localhost:5000')
-                        print('  ==> STOP Patient Table', time.time(), resp.text) 
+                        logger.info('  ==> STOP Patient Table')
+                        resp = requests.post('http://localhost:5000/ptab/stop')
+                        logger.info(f'Send request, receive: {resp.text}') 
                         ptab_moving = False  
 
                 # pose Fist
-                if most_common_pose == 4:
+                if most_common_pose == 2 or most_common_pose == 4:
                     if not ptab_moving:
-                        resp = requests.get('http://localhost:5000')
-                        print('  ==> MOVE Patient Table', time.time(), resp.text) 
+                        logger.info('  ==> MOVE Patient Table')
+                        resp = requests.post('http://localhost:5000/ptab/move')
+                        logger.info(f'Send request, receive: {resp.text}') 
                         ptab_moving = True  
 
             gui.drawInferences(inferences, poses)
@@ -256,8 +276,7 @@ if __name__ == '__main__':
                     num_frames = 0
                     start_time = datetime.datetime.now()
                 else:
-                    print("frames processed: ", index, "elapsed time: ",
-                          elapsed_time, "fps: ", str(int(fps)))
+                    logger.info(f'frames processed: {index} elapsed time: {elapsed_time}, fps: {str(int(fps))}')
 
     
         # print("frame ",  index, num_frames, elapsed_time, fps)
@@ -276,14 +295,13 @@ if __name__ == '__main__':
                     num_frames = 0
                     start_time = datetime.datetime.now()
                 else:
-                    print("frames processed: ", index, "elapsed time: ",
-                          elapsed_time, "fps: ", str(int(fps)))
+                    logger.info(f'frames processed: {index} elapsed time: {elapsed_time}, fps: {str(int(fps))}')
         else:
-            print("video end")
+            logger.info("video end")
             break
     elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
     fps = num_frames / elapsed_time
-    print("fps", fps)
+    logger.info(f'fps: {fps}')
     pool.terminate()
     video_capture.stop()
     cv2.destroyAllWindows()
