@@ -187,13 +187,21 @@ if __name__ == '__main__':
     fps = 0
     index = 0
 
-    cv2.namedWindow('Handpose', cv2.WINDOW_NORMAL)
+    # cv2.namedWindow('Handpose', cv2.WINDOW_NORMAL)
+    cv2.namedWindow('Handpose', 0)
+    cv2.resizeWindow('Handpose', 640, 360)
 
+    last_time = time.time()
     duration = 1.0
     pose_buf = []
     time_buf = []
 
     ptab_moving = False
+
+    url_root = 'http://md1z7xac.ad005.onehc.net:5757/api'
+    url_ptab_pause = url_root + '/ptab/pause'
+    url_ptab_movein = url_root + '/ptab/move-in'
+    url_ptab_moveout = url_root + '/ptab/move-out'
 
     while True:
         frame = video_capture.read()
@@ -209,7 +217,6 @@ if __name__ == '__main__':
 
         try:
             inferences = inferences_q.get_nowait()      
-
         except Exception as e:
             pass      
 
@@ -219,6 +226,12 @@ if __name__ == '__main__':
 
         if inferences is None:
             logger.debug('No hand detected')
+            if time.time() - last_time > duration:
+                if ptab_moving:
+                    logger.info('  ==> Pause Patient Table')
+                    resp = requests.get(url_ptab_pause)
+                    logger.info(f'Send request, receive: {resp.status_code}') 
+                    ptab_moving = False
 
         # Display inferences
         if(inferences is not None):
@@ -242,25 +255,32 @@ if __name__ == '__main__':
                 most_common_pose, detect_times = c.most_common(1)[0]
                 logger.info(f'Pose {poses[most_common_pose]} happens {detect_times} / {len(pose_buf)}')  
                 
-                # pose Four
+                # pose Palm
                 if most_common_pose == 0 or most_common_pose == 5:
                     if ptab_moving:
                         logger.info('  ==> STOP Patient Table')
-                        resp = requests.post('http://localhost:5000/ptab/stop')
-                        logger.info(f'Send request, receive: {resp.text}') 
+                        resp = requests.get(url_ptab_pause)
+                        logger.info(f'Send request, receive: {resp.status_code}') 
                         ptab_moving = False  
 
                 # pose Fist
-                if most_common_pose == 2 or most_common_pose == 4:
+                elif most_common_pose == 2 or most_common_pose == 4:
                     if not ptab_moving:
                         logger.info('  ==> MOVE Patient Table')
-                        resp = requests.post('http://localhost:5000/ptab/move')
-                        logger.info(f'Send request, receive: {resp.text}') 
+                        # resp = requests.get('http://localhost:5000/ptab/move')
+                        resp = requests.get(url_ptab_movein)
+                        logger.info(f'Send request, receive: {resp.status_code}') 
                         ptab_moving = True  
+                        last_time = t
+
+                else:
+                    if ptab_moving:
+                        logger.info('  ==> PAUSE Patient Table')
+                        resp = requests.get(url_ptab_pause)
+                        logger.info(f'Send request, receive: {resp.status_code}') 
+                        ptab_moving = False
 
             gui.drawInferences(inferences, poses)
-
-          
 
         if (cropped_output is not None):
             cropped_output = cv2.cvtColor(cropped_output, cv2.COLOR_RGB2BGR)
