@@ -74,7 +74,7 @@ def draw_fps_on_image(fps, image_np):
 
 
 # Actual detection .. generate scores and bounding boxes given an image
-def detect_objects(image_np, detection_graph, sess, enlarge_box=False):
+def detect_objects(image_np, detection_graph, sess, enlarge_ratio=1.3):
     # Definite input and output Tensors for detection_graph
     image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
     # Each box represents a part of the image where a particular object was detected.
@@ -96,17 +96,44 @@ def detect_objects(image_np, detection_graph, sess, enlarge_box=False):
             detection_classes, num_detections],
         feed_dict={image_tensor: image_np_expanded})
 
-    if enlarge_box:
-        large_boxes = boxes.copy()
-        for i in np.arange(boxes.shape[0]):
-            w = boxes[i][3] - boxes[i][1]
-            h = boxes[i][2] - boxes[i][0]
-            large_boxes[i][0] = np.max([boxes[i][0] - h * 0.1, 0])    # top
-            large_boxes[i][2] = np.min([boxes[i][2] + h * 0.1, 1])         # bottom
-            large_boxes[i][1] = np.max([boxes[i][1] - w * 0.1, 0])           # left
-            large_boxes[i][3] = np.max([boxes[i][3] + w * 0.1, 1])          # right
+    # output square box for classification network
+    boxes = np.squeeze(boxes)
 
-        boxes = large_boxes
+    large_boxes = boxes.copy()
+    for i in np.arange(boxes.shape[0]):
+        # print('original box', large_boxes[i])
+        w = large_boxes[i][3] - large_boxes[i][1]
+        h = large_boxes[i][2] - large_boxes[i][0]
+
+        center_x = (large_boxes[i][3] + large_boxes[i][1]) / 2
+        center_y = (large_boxes[i][2] + large_boxes[i][0]) / 2
+
+        # w:h = 16:9
+        max_unit = np.max([w * 16, h * 9])     
+        size_x = max_unit / 16 * enlarge_ratio
+        size_y = max_unit / 9 * enlarge_ratio
+
+        # print('max unit', max_unit, size_x, size_y)
+
+        left = center_x - size_x / 2
+        right = center_x + size_x / 2
+        top = center_y - size_y / 2
+        bottom = center_y + size_y / 2
+
+        if left < 0:
+            left, right = 0, size_x
+        if right > 1:
+            left, right = 1 - size_x, 1
+        if top < 0:
+            top, bottom = 0, size_y
+        if bottom > 1:
+            top, bottom = 1 - size_y, 1                
+
+        large_boxes[i] = [top, left, bottom, right]
+
+        # print(large_boxes[i])
+
+    boxes = large_boxes
 
     return np.squeeze(boxes), np.squeeze(scores)
 
