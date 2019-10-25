@@ -19,7 +19,7 @@ import requests
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(level = logging.INFO)
-handler = logging.FileHandler("ptab.log")
+handler = logging.FileHandler("hackathon.log")
 handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
 handler.setFormatter(formatter)
@@ -48,7 +48,7 @@ def worker(input_q, output_q, cropped_output_q, inferences_q, cap_params, frame_
 
     logger.info(">> loading keras model for worker")
     try:
-        model, classification_graph, session = classifier.load_KerasGraph("cnn/models/hand_poses_wGarbage_10.h5")
+        model, classification_graph, session = classifier.load_KerasGraph("cnn/models/handposes_vgg64_v1.h5")
     except Exception as e:
         logger.error(e)
 
@@ -158,12 +158,13 @@ if __name__ == '__main__':
     cap_params['im_width'], cap_params['im_height'] = video_capture.size()
     cap_params['score_thresh'] = score_thresh
 
-    logger.info(cap_params['im_width'], cap_params['im_height'])
+    logger.info(f"im_width={cap_params['im_width']}, im_height={cap_params['im_height']}")
 
     # max number of hands we want to detect/track
     cap_params['num_hands_detect'] = args.num_hands
 
-    logger.info(cap_params, args)
+    logger.info(args)
+    logger.info(cap_params)
     
     # Count number of files to increment new example directory
     poses = []
@@ -191,17 +192,24 @@ if __name__ == '__main__':
     cv2.namedWindow('Handpose', 0)
     cv2.resizeWindow('Handpose', 640, 360)
 
-    last_time = time.time()
+    last_request_time = -1
+    last_movein_time = -1
+    last_moveout_time = -1
+
+    waiting_duration = 0.2
     duration = 1.0
     pose_buf = []
     time_buf = []
 
-    ptab_moving = False
+    ctrl_mode = 'ptab' # or 'light', switched by fist
+    is_ptab_tohome = False
+    is_ptab_moving = False
 
     url_root = 'http://md1z7xac.ad005.onehc.net:5757/api'
-    url_ptab_pause = url_root + '/ptab/pause'
-    url_ptab_movein = url_root + '/ptab/move-in'
-    url_ptab_moveout = url_root + '/ptab/move-out'
+    url_ptab_tohome = url_root + '/ptab/move-home'      # thumb
+    url_ptab_pause = url_root + '/ptab/pause'           # palm
+    url_ptab_movein = url_root + '/ptab/move-in'        # left
+    url_ptab_moveout = url_root + '/ptab/move-out'      # right
 
     while True:
         frame = video_capture.read()
@@ -226,12 +234,17 @@ if __name__ == '__main__':
 
         if inferences is None:
             logger.debug('No hand detected')
-            if time.time() - last_time > duration:
-                if ptab_moving:
-                    logger.info('  ==> Pause Patient Table')
-                    resp = requests.get(url_ptab_pause)
-                    logger.info(f'Send request, receive: {resp.status_code}') 
-                    ptab_moving = False
+
+            # Pause ptab moving if no request for a long time
+            if time.time() - last_request_time > waiting_duration:
+                if is_ptab_moving:
+                    if not is_ptab_tohome:
+                        logger.info('  ==> Pause Patient Table')
+                        resp = requests.get(url_ptab_pause)
+                        logger.info(f'Send request, receive: {resp.status_code}') 
+                        is_ptab_moving = False
+                        is_ptab_tohome = False
+
 
         # Display inferences
         if(inferences is not None):
@@ -255,30 +268,52 @@ if __name__ == '__main__':
                 most_common_pose, detect_times = c.most_common(1)[0]
                 logger.info(f'Pose {poses[most_common_pose]} happens {detect_times} / {len(pose_buf)}')  
                 
-                # pose Palm
-                if most_common_pose == 0 or most_common_pose == 5:
-                    if ptab_moving:
-                        logger.info('  ==> STOP Patient Table')
-                        resp = requests.get(url_ptab_pause)
-                        logger.info(f'Send request, receive: {resp.status_code}') 
-                        ptab_moving = False  
+                # MOVE IN: pose left
+                if most_common_pose == 0:
+                    logger.info('  ==> Move PTab IN')
+                    resp = requests.get(url_ptab_movein)
+                    logger.info(f'Send request, receive: {resp.status_code}') 
+                    is_ptab_moving = True  
+                    is_ptab_tohome = False
+                    last_request_time = t
 
-                # pose Fist
-                elif most_common_pose == 2 or most_common_pose == 4:
-                    if not ptab_moving:
-                        logger.info('  ==> MOVE Patient Table')
-                        # resp = requests.get('http://localhost:5000/ptab/move')
-                        resp = requests.get(url_ptab_movein)
-                        logger.info(f'Send request, receive: {resp.status_code}') 
-                        ptab_moving = True  
-                        last_time = t
+                # MOVE OUT: pose right
+                elif most_common_pose == 1:
+                    logger.info('  ==> Move PTab OUT')
+                    resp = requests.get(url_ptab_moveout)
+                    logger.info(f'Send request, receive: {resp.status_code}') 
+                    is_ptab_moving = True  
+                    is_ptab_tohome = False
+                    last_request_time = t
+
+                # MOVE HOME: pose thumb
+                elif most_common_pose == 4:
+                    logger.info('  ==> Move PTab to HOME')
+                    resp = requests.get(url_ptab_tohome)
+                    logger.info(f'Send request, receive: {resp.status_code}') 
+                    is_ptab_moving = True
+                    is_ptab_tohome = True  
+                    last_request_time = t            
+
+                # PAUSE: pose palm
+                elif most_common_pose == 3:
+                    logger.info('  ==> Pause PTab')
+                    resp = requests.get(url_ptab_pause)
+                    logger.info(f'Send request, receive: {resp.status_code}') 
+                    is_ptab_moving = False  
+                    is_ptab_tohome = False
+                    last_request_time = t    
 
                 else:
-                    if ptab_moving:
-                        logger.info('  ==> PAUSE Patient Table')
+                    # Pause PTab except in the case of ToHome
+                    if not is_ptab_tohome:
+                        logger.info('  ==> Pause PTab')
                         resp = requests.get(url_ptab_pause)
                         logger.info(f'Send request, receive: {resp.status_code}') 
-                        ptab_moving = False
+                        is_ptab_moving = False  
+                        is_ptab_tohome = False
+                        last_request_time = t                            
+
 
             gui.drawInferences(inferences, poses)
 
