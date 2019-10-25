@@ -40,58 +40,151 @@ score_thresh = 0.18
 # Create a worker thread that loads graph and
 # does detection on images in an input queue and puts it on an output queue
 
+url_root = 'http://md1z7xac.ad005.onehc.net:5757/api'
 
-class PTabController(object):
+
+class ModeSwitch(object):
 
     def __init__(self):
+        self.mode_light = False
+        self.mode_ptab = False
+
+        self.url_mode_ptab = url_root + '/mode/ptab'
+        self.url_mode_light = url_root + '/mode/light'
+
+    def set_ptab(self):
+        self.mode_ptab = True
+        self.mode_light = False
+        logger.info('  ==> Set PTab Mode')
+        resp = requests.get(self.url_mode_ptab)
+        logger.info(f'Send request, receive: {resp.status_code}')        
+
+    def set_light(self):
+        self.mode_light = True
+        self.mode_ptab = False
+        logger.info('  ==> Set Light Mode')
+        resp = requests.get(self.url_mode_light)
+        logger.info(f'Send request, receive: {resp.status_code}')          
+
+
+
+class LightController(object):
+    def __init__(self):
+        self.activated = False
+        self.url_light_brighter = url_root + '/light/light-brighter'      
+        self.url_light_darker = url_root + '/light/light-darker'           
+        self.url_light_switch = url_root + '/light/light_switch'         
+        self.url_light_pause = url_root + '/ptab/pause'   
+
+        self.last_request_time = -1     
+
+        self.in_darkering = False
+        self.in_brightering = False
+
+    def set_activated(self, activated):
+        self.activated = activated
+
+    def darker(self):
+        if not self.in_darkering:
+            logger.info('  ==> Darker Light')
+            self.in_darkering = True
+            resp = requests.get(self.url_light_darker)
+            logger.info(f'Send request, receive: {resp.status_code}')
+            self.last_request_time = time.time()   
+        self.in_brightering = False    
+
+    def brighter(self):
+        if not self.in_brightering:
+            self.in_brightering = True
+            logger.info('  ==> Brighter Light')
+            resp = requests.get(self.url_light_brighter)
+            logger.info(f'Send request, receive: {resp.status_code}')
+            self.last_request_time = time.time()  
+        self.in_darkering = False       
+
+    def pause(self):
+        if self.in_brightering:
+            logger.info('  ==> Pause brightering light')           
+            self.in_brightering = False
+            resp = requests.get(self.url_light_pause)
+            logger.info(self.url_light_pause)
+            logger.info(f'Send request, receive: {resp.status_code}') 
+            self.last_request_time = time.time()  
+
+        if self.in_darkering:
+            logger.info('  ==> Pause darkering light')           
+            self.in_darkering = False
+            logger.info(self.url_light_pause)
+            resp = requests.get(self.url_light_pause)
+            logger.info(f'Send request, receive: {resp.status_code}')      
+            self.last_request_time = time.time()             
+
+    def switch(self):
+        logger.info('  ==> Switch Light')
+        resp = requests.get(self.url_light_switch)
+        logger.info(f'Send request, receive: {resp.status_code}')
+        self.last_request_time = time.time()                
+
+class PTabController(object):
+    def __init__(self):
+        self.activated = False
+
         self.last_request_time = -1
         self.last_movein_time = -1
         self.last_moveout_time = -1
 
-        self.is_tohome = False
-        self.is_moving = False
+        self.in_tohome = False
+        self.in_movein = False
+        self.in_moveout = False
 
-        self.url_root = 'http://md1z7xac.ad005.onehc.net:5757/api'
-        self.url_ptab_tohome = self.url_root + '/ptab/move-home'      # thumb
-        self.url_ptab_pause = self.url_root + '/ptab/pause'           # palm
-        self.url_ptab_movein = self.url_root + '/ptab/move-in'        # left
-        self.url_ptab_moveout = self.url_root + '/ptab/move-out'      # right     
+        self.url_ptab_tohome = url_root + '/ptab/move-home'      # thumb
+        self.url_ptab_pause = url_root + '/ptab/pause'           # palm
+        self.url_ptab_movein = url_root + '/ptab/move-in'        # left
+        self.url_ptab_moveout = url_root + '/ptab/move-out'      # right    
 
+
+    def set_activated(self, activated):
+        self.activated = activated
 
     def move_in(self):
-        logger.info('  ==> Move PTab IN')
-        resp = requests.get(self.url_ptab_movein)
-        logger.info(f'Send request, receive: {resp.status_code}')
-        self.last_request_time = time.time()   
-        self.is_moving = True  
-        self.is_tohome = False     
+        if not self.in_movein:
+            logger.info('  ==> Move PTab IN')
+            resp = requests.get(self.url_ptab_movein)
+            logger.info(f'Send request, receive: {resp.status_code}')
+            self.last_request_time = time.time()   
+        self.in_movein = True  
+        self.in_moveout = False
+        self.in_tohome = False     
 
     def move_out(self):
-        logger.info('  ==> Move PTab OUT')
-        resp = requests.get(self.url_ptab_moveout)
-        logger.info(f'Send request, receive: {resp.status_code}') 
-        self.last_request_time = time.time()   
-        self.is_moving = True  
-        self.is_tohome = False  
+        if not self.in_moveout:
+            logger.info('  ==> Move PTab OUT')
+            resp = requests.get(self.url_ptab_moveout)
+            logger.info(f'Send request, receive: {resp.status_code}') 
+            self.last_request_time = time.time()   
+        self.in_movein = False  
+        self.in_moveout = True
+        self.in_tohome = False  
 
     def to_home(self):
-        logger.info('  ==> Move PTab to HOME')
-        resp = requests.get(self.url_ptab_tohome)
-        logger.info(f'Send request, receive: {resp.status_code}') 
-        self.last_request_time = time.time()    
-        self.is_moving = True
-        self.is_tohome = True          
+        if not self.in_tohome:
+            logger.info('  ==> Move PTab to HOME')
+            resp = requests.get(self.url_ptab_tohome)
+            logger.info(f'Send request, receive: {resp.status_code}') 
+            self.last_request_time = time.time()    
+        self.in_movein = False  
+        self.in_moveout = False
+        self.in_tohome = True         
 
     def pause(self):
-        logger.info('  ==> Pause PTab')
-        resp = requests.get(self.url_ptab_pause)
-        logger.info(f'Send request, receive: {resp.status_code}') 
-        self.last_request_time = time.time()     
-        self.is_moving = False  
-        self.is_tohome = False       
-
-
-
+        if self.in_movein or self.in_moveout or self.in_tohome:
+            logger.info('  ==> Pause PTab')
+            resp = requests.get(self.url_ptab_pause)
+            logger.info(f'Send request, receive: {resp.status_code}') 
+            self.last_request_time = time.time()     
+            self.in_movein = False  
+            self.in_moveout = False
+            self.in_tohome = False        
 
 
 
@@ -247,14 +340,22 @@ if __name__ == '__main__':
     cv2.resizeWindow('Handpose', 640, 360)
 
 
+    switch = ModeSwitch()
     ptab = PTabController()
+    light = LightController()
 
+    switch_duration = 1.2
     waiting_duration = 0.2
     recognition_duration = 1.0
+
+    # used for mode switching
+    thumb_beginning_time = None
+    fist_beginning_time = None
+
+    no_inference_begining_time = None
+
     pose_buf = []
     time_buf = []
-
-    ctrl_mode = None # or 'ptab' / 'light'
 
     while True:
         frame = video_capture.read()
@@ -277,22 +378,45 @@ if __name__ == '__main__':
         num_frames += 1
         fps = num_frames / elapsed_time
 
+
         if inferences is None:
             logger.debug('No hand detected')
+            
+            if no_inference_begining_time is None:
+                no_inference_begining_time = time.time()
+            
+            if time.time() - no_inference_begining_time > waiting_duration:
+                # None of Ptab and Light
+                if switch.mode_ptab:
+                    thumb_beginning_time = None
 
-            # Pause ptab moving if no request for a long time
-            if time.time() - ptab.last_request_time > waiting_duration:
-                logger.debug('No request in the last waiting time')
-                logger.debug(f'PTab status: moving={ptab.is_moving}, tohome={ptab.is_tohome}')
-                if ptab.is_moving:
-                    if not ptab.is_tohome:
-                        logger.info('Pause Ptab if it is not on the way home')
-                        ptab.pause()
+                if switch.mode_ptab:
+                    fist_beginning_time = None
+
+                # control PTab
+                # Pause ptab moving if no request for a long time
+                if switch.mode_ptab:
+                    if time.time() - ptab.last_request_time > waiting_duration:
+                        logger.debug('No request in the last waiting time')
+                        logger.debug(f'PTab status: move-in={ptab.in_movein}, move-out={ptab.in_moveout}, tohome={ptab.in_tohome}')
+                        if ptab.in_movein or ptab.in_moveout:
+                            logger.info('Pause Ptab if it is not on the way home')
+                            ptab.pause()
+
+                if switch.mode_light:
+                    if time.time() - light.last_request_time > waiting_duration:
+                        logger.debug('No request in the last waiting time')
+                        logger.debug(f'Light status: brightering={light.in_brightering}, darking={light.in_darkering}')
+                        if light.in_brightering or light.in_darkering:
+                            logger.info('Pause light brightering or darking')
+                            light.pause()                            
 
 
         # Display inferences
         if(inferences is not None):
             logger.debug(inferences)
+
+            no_inference_begining_time = None
 
             t = time.time()
             p = np.argmax(inferences)
@@ -311,27 +435,69 @@ if __name__ == '__main__':
                 c = Counter(pose_buf)
                 most_common_pose, detect_times = c.most_common(1)[0]
                 logger.info(f'Pose {poses[most_common_pose]} happens {detect_times} / {len(pose_buf)}')  
-                
-                # MOVE IN: pose left
-                if most_common_pose == 0:
-                    ptab.move_in()
 
-                # MOVE OUT: pose right
-                elif most_common_pose == 1:
-                    ptab.move_out()
+                # check firstly if switching mode needed
+                if most_common_pose == 2:
+                    if not fist_beginning_time:
+                        fist_beginning_time = time.time()
+                    thumb_beginning_time = None
 
-                # MOVE HOME: pose thumb
                 elif most_common_pose == 4:
-                    ptab.to_home()
+                    if not thumb_beginning_time:
+                        thumb_beginning_time = time.time()
+                    fist_beginning_time = None
 
-                # PAUSE: pose palm
+                else:    
+                    thumb_beginning_time = None
+                    fist_beginning_time = None
+
+
+                # pose left
+                if most_common_pose == 0:
+                    if switch.mode_ptab:
+                        ptab.move_in()
+                    if switch.mode_light:
+                        light.darker()    
+
+                # pose right
+                elif most_common_pose == 1:
+                    if switch.mode_ptab:
+                        ptab.move_out()
+                    if switch.mode_light:
+                        light.brighter()                        
+
+                # pose fist, can switch to light mode
+                elif most_common_pose == 2:
+                    # mode switch?
+                    if not switch.mode_light:
+                        if time.time() - fist_beginning_time > switch_duration:
+                            switch.set_light()
+
+                # pose palm
                 elif most_common_pose == 3:
-                    ptab.pause()
+                    # mode PAUSE: 
+                    if switch.mode_ptab:
+                        ptab.pause()
+
+                # pose thumb, can switch to ptab mode
+                elif most_common_pose == 4:
+                    # mode switch?
+                    if not switch.mode_ptab:
+                        if time.time() - thumb_beginning_time > switch_duration:
+                            switch.set_ptab()
+                        
+                    # MOVE HOME: 
+                    if switch.mode_ptab:
+                        ptab.to_home()
 
                 else:
                     # Pause PTab except in the case of ToHome
-                    if not ptab.is_tohome:
-                        ptab.pause()
+                    if switch.mode_ptab:
+                        if not ptab.in_tohome:
+                            ptab.pause()
+
+                    if switch.mode_light:
+                        light.pause()                            
 
 
             gui.drawInferences(inferences, poses)
