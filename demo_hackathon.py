@@ -41,6 +41,60 @@ score_thresh = 0.18
 # does detection on images in an input queue and puts it on an output queue
 
 
+class PTabController(object):
+
+    def __init__(self):
+        self.last_request_time = -1
+        self.last_movein_time = -1
+        self.last_moveout_time = -1
+
+        self.is_tohome = False
+        self.is_moving = False
+
+        self.url_root = 'http://md1z7xac.ad005.onehc.net:5757/api'
+        self.url_ptab_tohome = self.url_root + '/ptab/move-home'      # thumb
+        self.url_ptab_pause = self.url_root + '/ptab/pause'           # palm
+        self.url_ptab_movein = self.url_root + '/ptab/move-in'        # left
+        self.url_ptab_moveout = self.url_root + '/ptab/move-out'      # right     
+
+
+    def move_in(self):
+        logger.info('  ==> Move PTab IN')
+        resp = requests.get(self.url_ptab_movein)
+        logger.info(f'Send request, receive: {resp.status_code}')
+        self.last_request_time = time.time()   
+        self.is_moving = True  
+        self.is_tohome = False     
+
+    def move_out(self):
+        logger.info('  ==> Move PTab OUT')
+        resp = requests.get(self.url_ptab_moveout)
+        logger.info(f'Send request, receive: {resp.status_code}') 
+        self.last_request_time = time.time()   
+        self.is_moving = True  
+        self.is_tohome = False  
+
+    def to_home(self):
+        logger.info('  ==> Move PTab to HOME')
+        resp = requests.get(self.url_ptab_tohome)
+        logger.info(f'Send request, receive: {resp.status_code}') 
+        self.last_request_time = time.time()    
+        self.is_moving = True
+        self.is_tohome = True          
+
+    def pause(self):
+        logger.info('  ==> Pause PTab')
+        resp = requests.get(self.url_ptab_pause)
+        logger.info(f'Send request, receive: {resp.status_code}') 
+        self.last_request_time = time.time()     
+        self.is_moving = False  
+        self.is_tohome = False       
+
+
+
+
+
+
 def worker(input_q, output_q, cropped_output_q, inferences_q, cap_params, frame_processed):
     logger.info(">> loading frozen model for worker")
     detection_graph, sess = detector_utils.load_inference_graph()
@@ -192,24 +246,15 @@ if __name__ == '__main__':
     cv2.namedWindow('Handpose', 0)
     cv2.resizeWindow('Handpose', 640, 360)
 
-    last_request_time = -1
-    last_movein_time = -1
-    last_moveout_time = -1
+
+    ptab = PTabController()
 
     waiting_duration = 0.2
-    duration = 1.0
+    recognition_duration = 1.0
     pose_buf = []
     time_buf = []
 
-    ctrl_mode = 'ptab' # or 'light', switched by fist
-    is_ptab_tohome = False
-    is_ptab_moving = False
-
-    url_root = 'http://md1z7xac.ad005.onehc.net:5757/api'
-    url_ptab_tohome = url_root + '/ptab/move-home'      # thumb
-    url_ptab_pause = url_root + '/ptab/pause'           # palm
-    url_ptab_movein = url_root + '/ptab/move-in'        # left
-    url_ptab_moveout = url_root + '/ptab/move-out'      # right
+    ctrl_mode = None # or 'ptab' / 'light'
 
     while True:
         frame = video_capture.read()
@@ -236,14 +281,13 @@ if __name__ == '__main__':
             logger.debug('No hand detected')
 
             # Pause ptab moving if no request for a long time
-            if time.time() - last_request_time > waiting_duration:
-                if is_ptab_moving:
-                    if not is_ptab_tohome:
-                        logger.info('  ==> Pause Patient Table')
-                        resp = requests.get(url_ptab_pause)
-                        logger.info(f'Send request, receive: {resp.status_code}') 
-                        is_ptab_moving = False
-                        is_ptab_tohome = False
+            if time.time() - ptab.last_request_time > waiting_duration:
+                logger.debug('No request in the last waiting time')
+                logger.debug(f'PTab status: moving={ptab.is_moving}, tohome={ptab.is_tohome}')
+                if ptab.is_moving:
+                    if not ptab.is_tohome:
+                        logger.info('Pause Ptab if it is not on the way home')
+                        ptab.pause()
 
 
         # Display inferences
@@ -256,9 +300,9 @@ if __name__ == '__main__':
             time_buf.insert(0, t)
             pose_buf.insert(0, p)
 
-            # remove the data which is not in the time window
+            # remove the data which is not in the time window of recognition
             for i in np.arange(len(time_buf)-1):
-                if time_buf[0] - time_buf[-1] > duration:
+                if time_buf[0] - time_buf[-1] > recognition_duration:
                     time_buf.pop()
                     pose_buf.pop()
 
@@ -270,49 +314,24 @@ if __name__ == '__main__':
                 
                 # MOVE IN: pose left
                 if most_common_pose == 0:
-                    logger.info('  ==> Move PTab IN')
-                    resp = requests.get(url_ptab_movein)
-                    logger.info(f'Send request, receive: {resp.status_code}') 
-                    is_ptab_moving = True  
-                    is_ptab_tohome = False
-                    last_request_time = t
+                    ptab.move_in()
 
                 # MOVE OUT: pose right
                 elif most_common_pose == 1:
-                    logger.info('  ==> Move PTab OUT')
-                    resp = requests.get(url_ptab_moveout)
-                    logger.info(f'Send request, receive: {resp.status_code}') 
-                    is_ptab_moving = True  
-                    is_ptab_tohome = False
-                    last_request_time = t
+                    ptab.move_out()
 
                 # MOVE HOME: pose thumb
                 elif most_common_pose == 4:
-                    logger.info('  ==> Move PTab to HOME')
-                    resp = requests.get(url_ptab_tohome)
-                    logger.info(f'Send request, receive: {resp.status_code}') 
-                    is_ptab_moving = True
-                    is_ptab_tohome = True  
-                    last_request_time = t            
+                    ptab.to_home()
 
                 # PAUSE: pose palm
                 elif most_common_pose == 3:
-                    logger.info('  ==> Pause PTab')
-                    resp = requests.get(url_ptab_pause)
-                    logger.info(f'Send request, receive: {resp.status_code}') 
-                    is_ptab_moving = False  
-                    is_ptab_tohome = False
-                    last_request_time = t    
+                    ptab.pause()
 
                 else:
                     # Pause PTab except in the case of ToHome
-                    if not is_ptab_tohome:
-                        logger.info('  ==> Pause PTab')
-                        resp = requests.get(url_ptab_pause)
-                        logger.info(f'Send request, receive: {resp.status_code}') 
-                        is_ptab_moving = False  
-                        is_ptab_tohome = False
-                        last_request_time = t                            
+                    if not ptab.is_tohome:
+                        ptab.pause()
 
 
             gui.drawInferences(inferences, poses)
