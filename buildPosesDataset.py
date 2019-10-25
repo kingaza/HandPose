@@ -5,7 +5,7 @@ import numpy as np
 from random import randint
 from sklearn.utils import shuffle
 
-def read_data(req_poses):
+def read_data(req_poses, im_size):
     count_im = 0
     count_classes = 0
     poses = os.listdir('Poses/')
@@ -24,7 +24,7 @@ def read_data(req_poses):
                         count_im += 1
     print(str(count_classes)  + ' classes')
     print(str(count_im) + ' images')
-    x = np.empty(shape=(count_im, 28, 28, 1))
+    x = np.empty(shape=(count_im, im_size, im_size, 1))
     y = np.empty(count_im)
 
     count_im = 0
@@ -44,7 +44,8 @@ def read_data(req_poses):
                         im = cv2.imread(path)
                         im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
                         im = im.astype(dtype="float64")
-                        im = np.reshape(im, (28, 28, 1))
+                        im = cv2.resize(im, (im_size, im_size), interpolation=cv2.INTER_AREA)
+                        im = np.reshape(im, (im_size, im_size, 1))
                         x[count_im][:][:][:] = im
                         y[count_im] = count_classes
                         count_im += 1
@@ -53,8 +54,8 @@ def read_data(req_poses):
 
     return x, y
 
-def load_data(poses=['all']):
-   x,y = read_data(poses)
+def load_data(poses=['all'], im_size=32):
+   x,y = read_data(poses, im_size)
    x,y = shuffle(x, y, random_state=0)
    x_train, y_train, x_test, y_test = split_data(x,y)
    return x_train, y_train, x_test, y_test

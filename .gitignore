@@ -91,11 +91,14 @@ ENV/
 .ropeproject
 
 # Downloaded datasets
+Poses.zip
 egohands/
 egohands_data.zip
 images/test/
 images/train/
 samples/
 Poses/
+Poses_tbd/
 .vscode/launch.json
 Dataset/
+tmp/

@@ -27,7 +27,7 @@ def worker(input_q, output_q, cropped_output_q, inferences_q, cap_params, frame_
 
     print(">> loading keras model for worker")
     try:
-        model, classification_graph, session = classifier.load_KerasGraph("cnn/models/hand_poses_wGarbage_10.h5")
+        model, classification_graph, session = classifier.load_KerasGraph("cnn/models/handposes_vgg64_v1.h5")
     except Exception as e:
         print(e)
 
@@ -163,12 +163,17 @@ if __name__ == '__main__':
     fps = 0
     index = 0
 
-    cv2.namedWindow('Handpose', cv2.WINDOW_NORMAL)
+    cv2.namedWindow('Handpose', 0)
+    cv2.resizeWindow('Handpose', 640, 360)
 
     while True:
         frame = video_capture.read()
         frame = cv2.flip(frame, 1)
         index += 1
+
+        # have a look at the capture image
+        if index % 25 == 0:
+            cv2.imwrite( f'./tmp/{index}_frame.png', frame)
 
         input_q.put(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
@@ -188,6 +193,7 @@ if __name__ == '__main__':
 
         # Display inferences
         if(inferences is not None):
+            # print(inferences)
             gui.drawInferences(inferences, poses)
 
         if (cropped_output is not None):
@@ -206,6 +212,9 @@ if __name__ == '__main__':
                 else:
                     print("frames processed: ", index, "elapsed time: ",
                           elapsed_time, "fps: ", str(int(fps)))
+
+            if index % 25 == 0:
+                cv2.imwrite( f'./tmp/{index}_cropped.png', cropped_output)              
 
     
         # print("frame ",  index, num_frames, elapsed_time, fps)

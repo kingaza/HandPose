@@ -95,6 +95,9 @@ def main():
     while(cap.isOpened()):
         ret, frame = cap.read()
         if ret:
+
+            # The frame shall be flipped before capture
+            frame = cv2.flip(frame, 1)            
             # write the frame
             out.write(frame)
 
@@ -128,8 +131,9 @@ def main():
         ret, frame = vid.read()
         if ret:
             print('   Processing frame: ' + str(_iter))
+
             # Resize and convert to RGB for NN to work with
-            frame = cv2.resize(frame, (320, 180), interpolation=cv2.INTER_AREA)
+            frame = cv2.resize(frame, (640, 360), interpolation=cv2.INTER_AREA)
 
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -137,7 +141,7 @@ def main():
             boxes, scores = detector_utils.detect_objects(frame, detection_graph, sess)
 
             # get region of interest
-            res = detector_utils.get_box_image(1, 0.2, scores, boxes, 320, 180, frame)
+            res = detector_utils.get_box_image(1, 0.2, scores, boxes, 640, 360, frame)
 
             # Save cropped image 
             if(res is not None):       

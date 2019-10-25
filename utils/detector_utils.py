@@ -74,7 +74,7 @@ def draw_fps_on_image(fps, image_np):
 
 
 # Actual detection .. generate scores and bounding boxes given an image
-def detect_objects(image_np, detection_graph, sess, enlarge_ratio=1.3):
+def detect_objects(image_np, detection_graph, sess, enlarge_ratio=1.1):
     # Definite input and output Tensors for detection_graph
     image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
     # Each box represents a part of the image where a particular object was detected.
@@ -112,6 +112,13 @@ def detect_objects(image_np, detection_graph, sess, enlarge_ratio=1.3):
         max_unit = np.max([w * 16, h * 9])     
         size_x = max_unit / 16 * enlarge_ratio
         size_y = max_unit / 9 * enlarge_ratio
+
+        if size_x > 1:
+            size_y = size_y / size_x
+            size_x = 1
+        if size_y > 1:
+            size_x = size_x / size_y
+            size_y =1
 
         # print('max unit', max_unit, size_x, size_y)
 

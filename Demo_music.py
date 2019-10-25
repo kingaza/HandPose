@@ -19,7 +19,7 @@ import requests
 import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(level = logging.INFO)
-handler = logging.FileHandler("ptab.log")
+handler = logging.FileHandler("music.log")
 handler.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
 handler.setFormatter(formatter)
@@ -48,7 +48,7 @@ def worker(input_q, output_q, cropped_output_q, inferences_q, cap_params, frame_
 
     logger.info(">> loading keras model for worker")
     try:
-        model, classification_graph, session = classifier.load_KerasGraph("cnn/models/hand_poses_wGarbage_10.h5")
+        model, classification_graph, session = classifier.load_KerasGraph("cnn/models/handposes_vgg64_v1.h5")
     except Exception as e:
         logger.error(e)
 
@@ -158,12 +158,13 @@ if __name__ == '__main__':
     cap_params['im_width'], cap_params['im_height'] = video_capture.size()
     cap_params['score_thresh'] = score_thresh
 
-    logger.info(cap_params['im_width'], cap_params['im_height'])
+    logger.info(f"im_width={cap_params['im_width']}, im_height={cap_params['im_height']}")
 
     # max number of hands we want to detect/track
     cap_params['num_hands_detect'] = args.num_hands
 
-    logger.info(cap_params, args)
+    logger.info(args)
+    logger.info(cap_params)
     
     # Count number of files to increment new example directory
     poses = []
@@ -251,15 +252,15 @@ if __name__ == '__main__':
                 logger.info(f'Pose {poses[most_common_pose]} happens {detect_times} / {len(pose_buf)}')  
                 
                 # pose Palm
-                if most_common_pose == 0 or most_common_pose == 5:
+                if most_common_pose == 3:
                     if music_playing:
                         logger.info('  ==> Stop playing music')
                         resp = requests.get(url_music_stop)
                         logger.info(f'Send request, receive: {resp.status_code}') 
                         music_playing = False  
 
-                # pose Fist
-                elif most_common_pose == 2 or most_common_pose == 4:
+                # pose Thumb
+                elif most_common_pose == 4:
                     if not music_playing:
                         logger.info('  ==> Play music')
                         resp = requests.get(url_music_play)
@@ -267,12 +268,19 @@ if __name__ == '__main__':
                         music_playing = True  
                         last_time = t
 
-                elif most_common_pose == 3:
+                elif most_common_pose == 0:
+                    logger.info('  ==> Play last music')
+                    resp = requests.get(url_music_last)
+                    logger.info(f'Send request, receive: {resp.status_code}') 
+                    music_playing = True  
+                    last_time = t            
+
+                elif most_common_pose == 1:
                     logger.info('  ==> Play next music')
                     resp = requests.get(url_music_next)
                     logger.info(f'Send request, receive: {resp.status_code}') 
                     music_playing = True  
-                    last_time = t                        
+                    last_time = t                                      
 
             gui.drawInferences(inferences, poses)
 

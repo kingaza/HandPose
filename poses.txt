@@ -1,6 +1,5 @@
-Four
-Garbage
-Rock
-Startrek
-Fist
-Palm
+1_Left
+2_Right
+3_Fist
+4_Palm
+6_Thumb
