@@ -93,6 +93,7 @@ ENV/
 # Downloaded datasets
 Poses.zip
 egohands/
+egohands_data/
 egohands_data.zip
 images/test/
 images/train/
